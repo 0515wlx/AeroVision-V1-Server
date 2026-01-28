@@ -19,6 +19,10 @@ _review_service = None
 
 
 # Request counter for stats
+# NOTE: These counters are process-local and not suitable for multi-worker deployments.
+# In production with multiple workers (e.g., uvicorn --workers N), each worker maintains
+# its own independent counters, leading to inaccurate statistics. For accurate
+# application-wide statistics, consider using a centralized storage like Redis.
 _request_count = 0
 _success_count = 0
 _error_count = 0

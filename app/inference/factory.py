@@ -5,11 +5,11 @@ This module provides a singleton factory for lazy-loading inference models from
 the aerovision-v1-inference package.
 """
 
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
+from app.core.config import get_settings
 from app.core.logging import logger
 
 # Try to import from aerovision-v1-inference
@@ -57,14 +57,15 @@ class InferenceFactory:
 
     @classmethod
     def get_model_dir(cls) -> Path:
-        """Get the model directory from environment or default."""
-        model_dir = os.getenv("MODEL_DIR", "models")
-        return Path(model_dir)
+        """Get the model directory from settings."""
+        settings = get_settings()
+        return Path(settings.model_dir)
 
     @classmethod
     def get_device(cls) -> str:
         """Get the device for inference (cuda/cpu)."""
-        return os.getenv("DEVICE", "cuda")
+        settings = get_settings()
+        return settings.device
 
     @classmethod
     def get_aircraft_classifier(cls) -> AircraftClassifier:
@@ -137,9 +138,10 @@ class InferenceFactory:
             raise InferenceFactoryError("aerovision-v1-inference package not available")
 
         if cls._registration_ocr is None:
-            ocr_mode = os.getenv("OCR_MODE", "local")
-            ocr_lang = os.getenv("OCR_LANG", "ch")
-            use_angle_cls = os.getenv("USE_ANGLE_CLS", "true").lower() == "true"
+            settings = get_settings()
+            ocr_mode = settings.ocr_mode
+            ocr_lang = settings.ocr_lang
+            use_angle_cls = settings.use_angle_cls
 
             logger.info(f"Loading registration OCR in {ocr_mode} mode")
             cls._registration_ocr = RegistrationOCR(
@@ -167,12 +169,13 @@ class InferenceFactory:
             raise InferenceFactoryError("aerovision-v1-inference package not available")
 
         if cls._quality_assessor is None:
-            sharpness_weight = float(os.getenv("SHARPNESS_WEIGHT", "0.3"))
-            exposure_weight = float(os.getenv("EXPOSURE_WEIGHT", "0.2"))
-            composition_weight = float(os.getenv("COMPOSITION_WEIGHT", "0.15"))
-            noise_weight = float(os.getenv("NOISE_WEIGHT", "0.2"))
-            color_weight = float(os.getenv("COLOR_WEIGHT", "0.15"))
-            pass_threshold = float(os.getenv("QUALITY_PASS_THRESHOLD", "0.6"))
+            settings = get_settings()
+            sharpness_weight = settings.sharpness_weight
+            exposure_weight = settings.exposure_weight
+            composition_weight = settings.composition_weight
+            noise_weight = settings.noise_weight
+            color_weight = settings.color_weight
+            pass_threshold = settings.quality_pass_threshold
 
             logger.info("Loading quality assessor")
             cls._quality_assessor = QualityAssessor(

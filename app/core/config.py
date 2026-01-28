@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     workers: int = 1
-    reload: bool = True
+    reload: bool = False  # Set to True only for development
 
     # CORS
     cors_origins: list[str] = ["*"]

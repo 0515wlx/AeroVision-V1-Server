@@ -55,7 +55,7 @@ async def assess_quality_batch(request: BatchImageInput) -> BatchQualityResponse
         service_results = _service.assess_batch(request.images)
 
         results = [
-            BatchQualityItem(**r, meta=Meta(processing_time_ms=0))
+            BatchQualityItem(**r)
             for r in service_results
         ]
 

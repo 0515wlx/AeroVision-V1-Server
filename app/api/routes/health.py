@@ -8,6 +8,7 @@ import torch
 from fastapi import APIRouter, Depends
 
 from app.api.deps import get_request_stats
+from app.core.config import get_settings
 from app.inference import InferenceFactory
 from app.schemas.common import HealthResponse, StatsResponse
 
@@ -23,7 +24,6 @@ async def health_check() -> HealthResponse:
 
     Returns service status, version, and availability of inference models.
     """
-    settings = Depends()
     settings = get_settings()
 
     # Check GPU availability

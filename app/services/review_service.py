@@ -2,6 +2,7 @@
 Aggregated review service.
 """
 
+import time
 from typing import Any
 
 from app.schemas.review import ReviewResult, ReviewQualityResult, ReviewAircraftResult, ReviewAirlineResult, ReviewRegistrationResult
@@ -178,5 +179,4 @@ class ReviewService(BaseService):
     @staticmethod
     def _now() -> float:
         """Get current time in seconds."""
-        import time
         return time.perf_counter()
