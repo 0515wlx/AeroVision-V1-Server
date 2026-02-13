@@ -2,6 +2,7 @@
 Registration number OCR service.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from PIL import Image
@@ -39,6 +40,18 @@ class RegistrationService(BaseService):
             ImageLoadError: If image loading fails
         """
         image = self.load_image(image_input)
+        return self._recognize_image(image)
+
+    def _recognize_image(self, image: Image.Image) -> tuple[RegistrationResult, float]:
+        """
+        Recognize registration number of a pre-loaded image.
+
+        Args:
+            image: PIL Image object
+
+        Returns:
+            Tuple of (registration result, processing time ms)
+        """
         ocr = self._get_ocr()
 
         def do_recognize():
@@ -58,30 +71,61 @@ class RegistrationService(BaseService):
         Returns:
             List of results with index, success status, and data/error
         """
-        results = []
-
-        for idx, image_input in enumerate(image_inputs):
+        images = []
+        for image_input in image_inputs:
             try:
-                result, _ = self.recognize(image_input)
+                image = self.load_image(image_input)
+                images.append(image)
+            except ImageLoadError:
+                images.append(None)
+
+        registration_results = self._recognize_batch(images)
+
+        results = []
+        for idx, result in enumerate(registration_results):
+            if result is None:
+                results.append({
+                    "index": idx,
+                    "success": False,
+                    "data": None,
+                    "error": "Registration OCR failed"
+                })
+            else:
                 results.append({
                     "index": idx,
                     "success": True,
                     "data": result.model_dump(by_alias=True),
                     "error": None
                 })
-            except ImageLoadError as e:
-                results.append({
-                    "index": idx,
-                    "success": False,
-                    "data": None,
-                    "error": str(e)
-                })
-            except Exception as e:
-                results.append({
-                    "index": idx,
-                    "success": False,
-                    "data": None,
-                    "error": f"Registration OCR failed: {e}"
-                })
+
+        return results
+
+    def _recognize_batch(self, images: list[Image.Image | None]) -> list[RegistrationResult]:
+        """
+        Recognize registration numbers from multiple pre-loaded images concurrently.
+
+        Args:
+            images: List of PIL Image objects (can contain None for failed loads)
+
+        Returns:
+            List of RegistrationResult objects
+        """
+        results = [None] * len(images)
+
+        with ThreadPoolExecutor() as executor:
+            def recognize_with_index(idx, image):
+                if image is None:
+                    return idx, None
+                try:
+                    result, _ = self._recognize_image(image)
+                    return idx, result
+                except Exception:
+                    return idx, None
+
+            futures = [executor.submit(recognize_with_index, idx, img) for idx, img in enumerate(images)]
+
+            for future in futures:
+                idx, result = future.result()
+                results[idx] = result
 
         return results

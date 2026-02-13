@@ -2,6 +2,7 @@
 Airline classification service.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from PIL import Image
@@ -40,6 +41,19 @@ class AirlineService(BaseService):
             ImageLoadError: If image loading fails
         """
         image = self.load_image(image_input)
+        return self._classify_image(image, top_k)
+
+    def _classify_image(self, image: Image.Image, top_k: int | None = None) -> tuple[AirlineResult, float]:
+        """
+        Classify airline of a pre-loaded image.
+
+        Args:
+            image: PIL Image object
+            top_k: Number of top predictions to return
+
+        Returns:
+            Tuple of (airline result, processing time ms)
+        """
         classifier = self._get_classifier()
 
         def do_classify():
@@ -64,30 +78,62 @@ class AirlineService(BaseService):
         Returns:
             List of results with index, success status, and data/error
         """
-        results = []
-
-        for idx, image_input in enumerate(image_inputs):
+        images = []
+        for image_input in image_inputs:
             try:
-                result, _ = self.classify(image_input, top_k=top_k)
+                image = self.load_image(image_input)
+                images.append(image)
+            except ImageLoadError:
+                images.append(None)
+
+        airline_results = self._classify_batch(images, top_k)
+
+        results = []
+        for idx, result in enumerate(airline_results):
+            if result is None:
+                results.append({
+                    "index": idx,
+                    "success": False,
+                    "data": None,
+                    "error": "Airline classification failed"
+                })
+            else:
                 results.append({
                     "index": idx,
                     "success": True,
                     "data": result.model_dump(by_alias=True),
                     "error": None
                 })
-            except ImageLoadError as e:
-                results.append({
-                    "index": idx,
-                    "success": False,
-                    "data": None,
-                    "error": str(e)
-                })
-            except Exception as e:
-                results.append({
-                    "index": idx,
-                    "success": False,
-                    "data": None,
-                    "error": f"Airline classification failed: {e}"
-                })
+
+        return results
+
+    def _classify_batch(self, images: list[Image.Image | None], top_k: int | None = None) -> list[AirlineResult]:
+        """
+        Classify airline of multiple pre-loaded images concurrently.
+
+        Args:
+            images: List of PIL Image objects (can contain None for failed loads)
+            top_k: Number of top predictions to return
+
+        Returns:
+            List of AirlineResult objects
+        """
+        results = [None] * len(images)
+
+        with ThreadPoolExecutor() as executor:
+            def classify_with_index(idx, image):
+                if image is None:
+                    return idx, None
+                try:
+                    result, _ = self._classify_image(image, top_k)
+                    return idx, result
+                except Exception:
+                    return idx, None
+
+            futures = [executor.submit(classify_with_index, idx, img) for idx, img in enumerate(images)]
+
+            for future in futures:
+                idx, result = future.result()
+                results[idx] = result
 
         return results

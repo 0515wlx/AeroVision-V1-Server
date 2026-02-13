@@ -6,6 +6,10 @@ import time
 from typing import Any
 
 from app.schemas.review import ReviewResult, ReviewQualityResult, ReviewAircraftResult, ReviewAirlineResult, ReviewRegistrationResult
+from app.schemas.quality import QualityResult
+from app.schemas.aircraft import AircraftResult
+from app.schemas.airline import AirlineResult
+from app.schemas.registration import RegistrationResult
 from app.core.exceptions import ImageLoadError
 from app.services.quality_service import QualityService
 from app.services.aircraft_service import AircraftService
@@ -61,36 +65,44 @@ class ReviewService(BaseService):
 
         if include_quality:
             quality_data_tuple = self.safe_execute(
-                self.quality_service.assess, image_input
+                self.quality_service._assess_image, image
             )
             if quality_data_tuple:
-                quality_result, _ = quality_data_tuple
+                quality_data, _ = quality_data_tuple
+                quality_result = ReviewQualityResult(
+                    score=quality_data.score,
+                    **{"pass": quality_data.pass_},
+                    details=quality_data.details
+                )
 
         if include_aircraft:
-            aircraft_data = self.safe_execute(
-                self.aircraft_service.classify, image_input
+            aircraft_data_tuple = self.safe_execute(
+                self.aircraft_service._classify_image, image
             )
-            if aircraft_data:
+            if aircraft_data_tuple:
+                aircraft_data, _ = aircraft_data_tuple
                 aircraft_result = ReviewAircraftResult(
                     type_code=aircraft_data.top1.class_,
                     confidence=aircraft_data.top1.confidence
                 )
 
         if include_airline:
-            airline_data = self.safe_execute(
-                self.airline_service.classify, image_input
+            airline_data_tuple = self.safe_execute(
+                self.airline_service._classify_image, image
             )
-            if airline_data:
+            if airline_data_tuple:
+                airline_data, _ = airline_data_tuple
                 airline_result = ReviewAirlineResult(
                     airline_code=airline_data.top1.class_,
                     confidence=airline_data.top1.confidence
                 )
 
         if include_registration:
-            reg_data = self.safe_execute(
-                self.registration_service.recognize, image_input
+            reg_data_tuple = self.safe_execute(
+                self.registration_service._recognize_image, image
             )
-            if reg_data:
+            if reg_data_tuple:
+                reg_data, _ = reg_data_tuple
                 # Use registration confidence as clarity
                 registration_result = ReviewRegistrationResult(
                     registration=reg_data.registration,
@@ -133,7 +145,7 @@ class ReviewService(BaseService):
         include_registration: bool = True
     ) -> list[dict[str, Any]]:
         """
-        Review multiple images.
+        Review multiple images using concurrent inference.
 
         Args:
             image_inputs: List of base64 encoded images or URLs
@@ -145,29 +157,126 @@ class ReviewService(BaseService):
         Returns:
             List of results with index, success status, and data/error
         """
-        results = []
+        # Load all images once
+        images = []
+        image_errors = []
 
-        for idx, image_input in enumerate(image_inputs):
+        for image_input in image_inputs:
             try:
-                result, _ = self.review(
-                    image_input,
-                    include_quality=include_quality,
-                    include_aircraft=include_aircraft,
-                    include_airline=include_airline,
-                    include_registration=include_registration
+                image = self.load_image(image_input)
+                images.append(image)
+                image_errors.append(None)
+            except ImageLoadError as e:
+                images.append(None)
+                image_errors.append(str(e))
+            except Exception as e:
+                images.append(None)
+                image_errors.append(str(e))
+
+        # Collect results from all services using concurrent inference
+        quality_results = None
+        aircraft_results = None
+        airline_results = None
+        registration_results = None
+
+        if include_quality:
+            quality_results = self.safe_execute(
+                self.quality_service._assess_batch, images
+            )
+
+        if include_aircraft:
+            aircraft_results = self.safe_execute(
+                self.aircraft_service._classify_batch, images
+            )
+
+        if include_airline:
+            airline_results = self.safe_execute(
+                self.airline_service._classify_batch, images
+            )
+
+        if include_registration:
+            registration_results = self.safe_execute(
+                self.registration_service._recognize_batch, images
+            )
+
+        # Build final results
+        results = []
+        for idx, image_input in enumerate(image_inputs):
+            # Check for image load errors
+            if image_errors[idx] is not None:
+                results.append({
+                    "index": idx,
+                    "success": False,
+                    "data": None,
+                    "error": image_errors[idx]
+                })
+                continue
+
+            try:
+                # Get results for this index
+                quality_result = quality_results[idx] if (quality_results is not None and idx < len(quality_results)) else None
+                aircraft_result = aircraft_results[idx] if (aircraft_results is not None and idx < len(aircraft_results)) else None
+                airline_result = airline_results[idx] if (airline_results is not None and idx < len(airline_results)) else None
+                registration_result = registration_results[idx] if (registration_results is not None and idx < len(registration_results)) else None
+
+                # Build result objects
+                review_quality = None
+                if include_quality:
+                    if quality_result is not None:
+                        review_quality = ReviewQualityResult(
+                            score=quality_result.score,
+                            **{"pass": quality_result.pass_},
+                            details=quality_result.details
+                        )
+                    else:
+                        review_quality = ReviewQualityResult.model_validate({
+                            "score": 0.0,
+                            "pass": False,
+                            "details": None
+                        })
+
+                review_aircraft = None
+                if include_aircraft:
+                    if aircraft_result is not None:
+                        review_aircraft = ReviewAircraftResult(
+                            type_code=aircraft_result.top1.class_,
+                            confidence=aircraft_result.top1.confidence
+                        )
+                    else:
+                        review_aircraft = ReviewAircraftResult(
+                            type_code="UNKNOWN",
+                            confidence=0.0
+                        )
+
+                review_airline = None
+                if include_airline:
+                    if airline_result is not None:
+                        review_airline = ReviewAirlineResult(
+                            airline_code=airline_result.top1.class_,
+                            confidence=airline_result.top1.confidence
+                        )
+
+                review_registration = None
+                if include_registration:
+                    if registration_result is not None:
+                        review_registration = ReviewRegistrationResult(
+                            registration=registration_result.registration,
+                            confidence=registration_result.confidence,
+                            clarity=registration_result.confidence
+                        )
+
+                result = ReviewResult(
+                    quality=review_quality,
+                    aircraft=review_aircraft,
+                    airline=review_airline,
+                    registration=review_registration
                 )
+
                 results.append({
                     "index": idx,
                     "success": True,
                     "data": result.model_dump(by_alias=True),
                     "error": None
-                })
-            except ImageLoadError as e:
-                results.append({
-                    "index": idx,
-                    "success": False,
-                    "data": None,
-                    "error": str(e)
                 })
             except Exception as e:
                 results.append({
