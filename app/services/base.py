@@ -14,13 +14,8 @@ from typing import Any
 import httpx
 from PIL import Image
 
+from app.core.exceptions import ImageLoadError
 from app.core.logging import logger
-
-
-class ImageLoadError(Exception):
-    """Exception raised when image loading fails."""
-
-    pass
 
 
 class BaseService:

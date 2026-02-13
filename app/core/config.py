@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     max_batch_size: int = 50
     request_timeout_seconds: int = 300
 
+    # Redis (for shared statistics across workers)
+    redis_url: str = "redis://localhost:6379/0"
+    redis_enabled: bool = True
+
     # Logging
     log_level: str = "INFO"
     log_format: str = "json"  # json or text

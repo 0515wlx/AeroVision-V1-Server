@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import increment_request_count
+from app.core.exceptions import ImageLoadError, InferenceError
 from app.schemas.common import ImageInput, BatchImageInput, Meta
 from app.schemas.aircraft import (
     AircraftResponse,
@@ -39,7 +40,13 @@ async def classify_aircraft(
             **result.model_dump(by_alias=True),
             meta=Meta(processing_time_ms=timing_ms)
         )
-    except Exception as e:
+    except ImageLoadError as e:
+        increment_request_count(success=False)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to load image: {str(e)}"
+        )
+    except (InferenceError, Exception) as e:
         increment_request_count(success=False)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

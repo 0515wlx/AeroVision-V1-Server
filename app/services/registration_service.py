@@ -6,9 +6,10 @@ from typing import Any
 
 from PIL import Image
 
+from app.core.exceptions import ImageLoadError
 from app.inference import InferenceFactory, wrap_registration_result
 from app.schemas.registration import RegistrationResult
-from app.services.base import BaseService, ImageLoadError
+from app.services.base import BaseService
 
 
 class RegistrationService(BaseService):

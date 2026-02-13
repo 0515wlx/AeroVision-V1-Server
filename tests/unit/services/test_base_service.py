@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 
-from app.services.base import BaseService, ImageLoadError
+from app.core.exceptions import ImageLoadError
+from app.services.base import BaseService
 
 
 class TestBaseService:

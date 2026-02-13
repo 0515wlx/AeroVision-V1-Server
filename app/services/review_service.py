@@ -6,11 +6,12 @@ import time
 from typing import Any
 
 from app.schemas.review import ReviewResult, ReviewQualityResult, ReviewAircraftResult, ReviewAirlineResult, ReviewRegistrationResult
+from app.core.exceptions import ImageLoadError
 from app.services.quality_service import QualityService
 from app.services.aircraft_service import AircraftService
 from app.services.airline_service import AirlineService
 from app.services.registration_service import RegistrationService
-from app.services.base import BaseService, ImageLoadError
+from app.services.base import BaseService
 
 
 class ReviewService(BaseService):
@@ -59,9 +60,11 @@ class ReviewService(BaseService):
         registration_result = None
 
         if include_quality:
-            quality_result, _ = self.safe_execute(
+            quality_data_tuple = self.safe_execute(
                 self.quality_service.assess, image_input
             )
+            if quality_data_tuple:
+                quality_result, _ = quality_data_tuple
 
         if include_aircraft:
             aircraft_data = self.safe_execute(
@@ -98,11 +101,11 @@ class ReviewService(BaseService):
         # Build final result
         # Quality is mandatory - provide default if failed
         if quality_result is None:
-            quality_result = ReviewQualityResult(
-                score=0.0,
-                pass_=False,
-                details=None
-            )
+            quality_result = ReviewQualityResult.model_validate({
+                "score": 0.0,
+                "pass": False,
+                "details": None
+            })
 
         # Aircraft is mandatory - provide default if failed
         if aircraft_result is None:

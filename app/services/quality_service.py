@@ -6,9 +6,10 @@ from typing import Any
 
 from PIL import Image
 
+from app.core.exceptions import ImageLoadError
 from app.inference import InferenceFactory, wrap_quality_result
 from app.schemas.quality import QualityResult
-from app.services.base import BaseService, ImageLoadError
+from app.services.base import BaseService
 
 
 class QualityService(BaseService):
