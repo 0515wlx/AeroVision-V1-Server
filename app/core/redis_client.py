@@ -5,6 +5,7 @@ Provides a centralized storage for request statistics that works
 correctly in multi-worker deployments.
 """
 
+import time
 from typing import Optional
 
 import redis
@@ -31,14 +32,13 @@ class RedisStatsManager:
             Redis client instance
         """
         if self._redis is None:
-            redis_url = getattr(self.settings, 'REDIS_URL', 'redis://localhost:6379/0')
             self._redis = redis.from_url(
-                redis_url,
+                self.settings.redis_url,
                 decode_responses=True,
                 socket_connect_timeout=5,
                 socket_timeout=5
             )
-            logger.info(f"Connected to Redis: {redis_url}")
+            logger.info(f"Connected to Redis: {self.settings.redis_url}")
         return self._redis
 
     async def get_async_redis(self) -> AsyncRedis:
@@ -49,14 +49,13 @@ class RedisStatsManager:
             Async Redis client instance
         """
         if self._async_redis is None:
-            redis_url = getattr(self.settings, 'REDIS_URL', 'redis://localhost:6379/0')
             self._async_redis = AsyncRedis.from_url(
-                redis_url,
+                self.settings.redis_url,
                 decode_responses=True,
                 socket_connect_timeout=5,
                 socket_timeout=5
             )
-            logger.info(f"Connected to Redis (async): {redis_url}")
+            logger.info(f"Connected to Redis (async): {self.settings.redis_url}")
         return self._async_redis
 
     def increment_request_count(self, success: bool = True) -> None:
@@ -106,7 +105,6 @@ class RedisStatsManager:
                 error_count = 0
             if start_time is None:
                 # Set start time to now if not exists
-                import time
                 await r.set("stats:start_time", str(time.time()))
                 start_time = time.time()
             else:

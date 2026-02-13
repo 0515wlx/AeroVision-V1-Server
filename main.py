@@ -13,6 +13,13 @@ from fastapi.responses import JSONResponse
 from app import __version__
 from app.core import settings, logger
 from app.api import api_router
+from app.core.exceptions import (
+    AerovisionException,
+    ImageLoadError,
+    InferenceError,
+    ModelNotLoadedError,
+    ValidationError,
+)
 
 
 @asynccontextmanager
@@ -66,6 +73,33 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={
             "success": False,
             "error": "内部服务错误",
+            "detail": str(exc) if settings.debug else None,
+        },
+    )
+
+
+@app.exception_handler(AerovisionException)
+async def aerovision_exception_handler(request: Request, exc: AerovisionException):
+    """统一处理 Aerovision 异常"""
+    logger.warning(f"Aerovision 异常: {exc.code} - {exc.message}")
+
+    status_code_map = {
+        "IMAGE_LOAD_ERROR": 400,
+        "VALIDATION_ERROR": 422,
+        "MODEL_NOT_LOADED": 503,
+        "INFERENCE_ERROR": 500,
+    }
+
+    status_code = status_code_map.get(exc.code, 500)
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "success": False,
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+            },
             "detail": str(exc) if settings.debug else None,
         },
     )

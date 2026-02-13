@@ -4,6 +4,8 @@ Schemas for registration number OCR API.
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import Meta
+
 
 class YoloBox(BaseModel):
     """YOLO format bounding box with OCR result."""
@@ -37,7 +39,7 @@ class RegistrationResult(BaseModel):
 class RegistrationResponse(RegistrationResult):
     """Registration OCR response with metadata."""
 
-    pass
+    meta: Meta
 
 
 class BatchRegistrationItem(BaseModel):

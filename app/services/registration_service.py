@@ -8,9 +8,12 @@ from typing import Any
 from PIL import Image
 
 from app.core.exceptions import ImageLoadError
+from app.core import get_logger
 from app.inference import InferenceFactory, wrap_registration_result
 from app.schemas.registration import RegistrationResult
 from app.services.base import BaseService
+
+logger = get_logger("services.registration")
 
 
 class RegistrationService(BaseService):
@@ -119,7 +122,8 @@ class RegistrationService(BaseService):
                 try:
                     result, _ = self._recognize_image(image)
                     return idx, result
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Failed to recognize image at index {idx}: {e}")
                     return idx, None
 
             futures = [executor.submit(recognize_with_index, idx, img) for idx, img in enumerate(images)]

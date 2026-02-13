@@ -4,6 +4,8 @@ Schemas for aircraft type classification API.
 
 from pydantic import BaseModel, Field
 
+from app.schemas.common import Meta
+
 
 class Prediction(BaseModel):
     """Single prediction result."""
@@ -23,7 +25,7 @@ class AircraftResult(BaseModel):
 class AircraftResponse(AircraftResult):
     """Aircraft classification response with metadata."""
 
-    pass
+    meta: Meta
 
 
 class BatchAircraftItem(BaseModel):

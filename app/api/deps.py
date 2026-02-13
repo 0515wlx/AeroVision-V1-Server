@@ -11,13 +11,6 @@ from app.core.logging import logger
 from app.core.redis_client import get_request_stats as get_redis_stats
 from app.core.redis_client import increment_request_count as redis_increment
 
-# Service singletons
-_quality_service = None
-_aircraft_service = None
-_airline_service = None
-_registration_service = None
-_review_service = None
-
 
 async def get_request_stats() -> dict:
     """

@@ -26,7 +26,7 @@ def wrap_quality_result(inference_result: dict[str, Any]) -> QualityResult:
     details = inference_result.get("details", {})
 
     return QualityResult.model_validate({
-        "pass": inference_result.get("pass", True),
+        "pass": inference_result.get("pass", False),
         "score": inference_result.get("score", 0.0),
         "details": {
             "sharpness": details.get("sharpness", 0.0),

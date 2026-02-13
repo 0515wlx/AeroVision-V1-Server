@@ -64,5 +64,18 @@ def setup_logging(
     return logger
 
 
+def get_logger(name: str) -> logging.Logger:
+    """
+    Get a named logger instance.
+
+    Args:
+        name: Logger name
+
+    Returns:
+        Logger instance
+    """
+    return logging.getLogger(f"aerovision.{name}")
+
+
 # Initialize logger on module import
 logger = setup_logging()

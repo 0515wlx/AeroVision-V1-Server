@@ -4,7 +4,9 @@
 """
 
 from typing import List
+from pathlib import Path
 from fastapi import APIRouter, HTTPException, Depends
+import numpy as np
 
 from app.core import settings, get_logger
 from app.schemas.request import HistoricalRecordRequest
@@ -41,22 +43,85 @@ async def push_historical_records(
                 detail="向量数据库功能未启用"
             )
 
+        # 确保增强预测器已加载
+        if not hasattr(review_service, '_predictor') or review_service._predictor is None:
+            try:
+                from aerovision_inference import ModelPredictor
+                import torch
+
+                device = 'cuda' if torch.cuda.is_available() else 'cpu'
+                model_dir = settings.model_dir if hasattr(settings, 'model_dir') else 'models'
+
+                config = {
+                    'aircraft': {
+                        'path': str(Path(model_dir) / 'aircraft.pt'),
+                        'device': device,
+                        'image_size': 640
+                    },
+                    'airline': {
+                        'path': str(Path(model_dir) / 'airline.pt'),
+                        'device': device,
+                        'image_size': 640
+                    }
+                }
+
+                review_service._predictor = ModelPredictor(config)
+                logger.info("模型预测器初始化完成")
+            except Exception as e:
+                logger.error(f"初始化模型预测器失败: {e}")
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"无法初始化特征提取模型: {str(e)}"
+                )
+
         # 转换为 VectorRecord 并添加到数据库
         from aerovision_inference import VectorRecord
-        import numpy as np
 
         added_count = 0
         failed_count = 0
 
         for record in records:
             try:
-                # 注意：这里我们没有特征向量，需要先从图片提取
-                # 实际实现中，应该使用已有的特征向量或者从图片重新提取
-                # 这里简化处理，使用随机向量（实际应用中需要从模型提取）
+                # 从图片路径加载图片并提取特征向量
+                image_path = record.image_path
 
-                # TODO: 实际实现中需要从图片提取真实的特征向量
-                aircraft_emb = np.random.rand(128)
-                airline_emb = np.random.rand(128)
+                if not Path(image_path).exists():
+                    logger.warning(f"图片路径不存在: {image_path}，跳过此记录")
+                    failed_count += 1
+                    continue
+
+                # 使用 YOLO 的 embed 方法提取特征向量
+                try:
+                    aircraft_emb_result = review_service._predictor.aircraft_model.embed(
+                        image_path,
+                        imgsz=640,
+                        device=review_service._predictor.device,
+                        verbose=False
+                    )
+
+                    airline_emb_result = review_service._predictor.airline_model.embed(
+                        image_path,
+                        imgsz=640,
+                        device=review_service._predictor.device,
+                        verbose=False
+                    )
+
+                    # 转换为 numpy 数组并扁平化
+                    aircraft_emb = aircraft_emb_result[0]
+                    airline_emb = airline_emb_result[0]
+
+                    if hasattr(aircraft_emb, 'cpu'):
+                        aircraft_emb = aircraft_emb.cpu().numpy()
+                    if hasattr(airline_emb, 'cpu'):
+                        airline_emb = airline_emb.cpu().numpy()
+
+                    aircraft_emb = np.array(aircraft_emb).flatten()
+                    airline_emb = np.array(airline_emb).flatten()
+
+                except Exception as embed_error:
+                    logger.error(f"特征提取失败 {record.id}: {embed_error}")
+                    failed_count += 1
+                    continue
 
                 vector_record = VectorRecord(
                     id=record.id,

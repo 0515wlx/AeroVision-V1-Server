@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.schemas.aircraft import AircraftResult
 from app.schemas.airline import AirlineResult
+from app.schemas.common import Meta
 from app.schemas.quality import QualityDetails
 from app.schemas.registration import RegistrationResult
 
@@ -54,7 +55,7 @@ class ReviewResult(BaseModel):
 class ReviewResponse(ReviewResult):
     """Review response with metadata."""
 
-    pass
+    meta: Meta
 
 
 class BatchReviewItem(BaseModel):

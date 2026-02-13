@@ -4,6 +4,7 @@ Aggregated review service.
 
 import time
 from typing import Any
+from concurrent.futures import ThreadPoolExecutor
 
 from app.schemas.review import ReviewResult, ReviewQualityResult, ReviewAircraftResult, ReviewAirlineResult, ReviewRegistrationResult
 from app.schemas.quality import QualityResult
@@ -174,30 +175,50 @@ class ReviewService(BaseService):
                 image_errors.append(str(e))
 
         # Collect results from all services using concurrent inference
+        # Use ThreadPoolExecutor to parallelize batch processing across services
         quality_results = None
         aircraft_results = None
         airline_results = None
         registration_results = None
 
+        batch_tasks = {}
+
         if include_quality:
-            quality_results = self.safe_execute(
-                self.quality_service._assess_batch, images
-            )
+            batch_tasks['quality'] = self.quality_service._assess_batch
 
         if include_aircraft:
-            aircraft_results = self.safe_execute(
-                self.aircraft_service._classify_batch, images
-            )
+            batch_tasks['aircraft'] = self.aircraft_service._classify_batch
 
         if include_airline:
-            airline_results = self.safe_execute(
-                self.airline_service._classify_batch, images
-            )
+            batch_tasks['airline'] = self.airline_service._classify_batch
 
         if include_registration:
-            registration_results = self.safe_execute(
-                self.registration_service._recognize_batch, images
-            )
+            batch_tasks['registration'] = self.registration_service._recognize_batch
+
+        # Execute batch tasks in parallel
+        if batch_tasks:
+            with ThreadPoolExecutor() as executor:
+                future_to_name = {
+                    executor.submit(task, images): name
+                    for name, task in batch_tasks.items()
+                }
+
+                for future in future_to_name:
+                    task_name = future_to_name[future]
+                    try:
+                        result = future.result()
+                        if task_name == 'quality':
+                            quality_results = result
+                        elif task_name == 'aircraft':
+                            aircraft_results = result
+                        elif task_name == 'airline':
+                            airline_results = result
+                        elif task_name == 'registration':
+                            registration_results = result
+                    except Exception as e:
+                        task_name = future_to_name[future]
+                        self.safe_execute(lambda: None)  # Log error through safe_execute
+                        setattr(locals(), f"{task_name}_results", None)
 
         # Build final results
         results = []

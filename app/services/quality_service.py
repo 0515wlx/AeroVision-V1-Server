@@ -8,9 +8,12 @@ from typing import Any
 from PIL import Image
 
 from app.core.exceptions import ImageLoadError
+from app.core import get_logger
 from app.inference import InferenceFactory, wrap_quality_result
 from app.schemas.quality import QualityResult
 from app.services.base import BaseService
+
+logger = get_logger("services.quality")
 
 
 class QualityService(BaseService):
@@ -100,7 +103,8 @@ class QualityService(BaseService):
                 try:
                     result, _ = self._assess_image(image)
                     return idx, result
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Failed to assess image at index {idx}: {e}")
                     return idx, None
 
             futures = [executor.submit(assess_with_index, idx, img) for idx, img in enumerate(images)]

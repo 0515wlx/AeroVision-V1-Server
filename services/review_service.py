@@ -331,18 +331,43 @@ class ReviewService:
             # 相似度搜索（如果启用了向量数据库）
             if self._enhanced_predictor is not None and results.aircraft is not None:
                 try:
-                    # 保存图片到临时文件用于特征提取
-                    import tempfile
-                    with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
-                        image.save(tmp, format="JPEG")
-                        tmp_path = tmp.name
+                    # 直接使用内存中的图片进行特征提取，避免临时文件
+                    img_array = np.array(image)
 
-                    # 使用增强预测器进行搜索
-                    from pathlib import Path
-                    enhanced_result = self._enhanced_predictor.predict(
-                        image_path=tmp_path,
-                        record_id=review_id,
-                        save_to_db=True
+                    # 使用 YOLO 模型的 embed 方法直接提取特征
+                    aircraft_emb_tensor = self._enhanced_predictor.predictor.aircraft_model.embed(
+                        img_array,
+                        imgsz=self._enhanced_predictor.predictor.image_size,
+                        device=self._enhanced_predictor.predictor.device,
+                        verbose=False
+                    )[0]
+
+                    airline_emb_tensor = self._enhanced_predictor.predictor.airline_model.embed(
+                        img_array,
+                        imgsz=self._enhanced_predictor.predictor.image_size,
+                        device=self._enhanced_predictor.predictor.device,
+                        verbose=False
+                    )[0]
+
+                    # 转换为 numpy 数组
+                    if hasattr(aircraft_emb_tensor, 'cpu'):
+                        aircraft_emb = aircraft_emb_tensor.cpu().numpy()
+                    else:
+                        aircraft_emb = np.array(aircraft_emb_tensor)
+
+                    if hasattr(airline_emb_tensor, 'cpu'):
+                        airline_emb = airline_emb_tensor.cpu().numpy()
+                    else:
+                        airline_emb = np.array(airline_emb_tensor)
+
+                    aircraft_emb = aircraft_emb.flatten()
+                    airline_emb = airline_emb.flatten()
+
+                    # 相似度搜索
+                    similar_records_data = self._enhanced_predictor.vector_db.search_similar(
+                        aircraft_embedding=aircraft_emb,
+                        airline_embedding=airline_emb,
+                        top_k=5
                     )
 
                     # 转换相似记录
@@ -355,15 +380,34 @@ class ReviewService:
                             airline=r.airline,
                             metadata=r.metadata
                         )
-                        for r in enhanced_result.similar_records
+                        for r in similar_records_data
                     ]
 
-                    results.is_new_class = enhanced_result.is_new_class
-                    results.new_class_score = enhanced_result.new_class_score
+                    # 新类别检测
+                    from aerovision_inference import VectorRecord
 
-                    # 清理临时文件
-                    import os
-                    os.unlink(tmp_path)
+                    # 保存记录到数据库
+                    vector_record = VectorRecord(
+                        id=review_id,
+                        image_path=f"memory_{review_id}",
+                        aircraft_embedding=aircraft_emb,
+                        airline_embedding=airline_emb,
+                        aircraft_type=results.aircraft.type_code if results.aircraft else "",
+                        airline=results.airline.airline if results.airline and hasattr(results.airline, 'airline') else "",
+                        aircraft_confidence=results.aircraft.confidence if results.aircraft else 0.0,
+                        airline_confidence=results.airline.confidence if results.airline and hasattr(results.airline, 'confidence') else 0.0,
+                    )
+
+                    self._enhanced_predictor.vector_db.add_record(vector_record)
+
+                    # 检查是否为新类别
+                    if similar_records_data:
+                        top_similarity = similar_records_data[0].similarity
+                        results.is_new_class = top_similarity < 0.7
+                        results.new_class_score = top_similarity
+                    else:
+                        results.is_new_class = True
+                        results.new_class_score = 0.0
 
                     logger.info(
                         f"[{review_id}] 相似度搜索完成，"

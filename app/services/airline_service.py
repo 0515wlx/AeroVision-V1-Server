@@ -127,7 +127,8 @@ class AirlineService(BaseService):
                 try:
                     result, _ = self._classify_image(image, top_k)
                     return idx, result
-                except Exception:
+                except Exception as e:
+                    logger.error(f"Failed to classify image at index {idx}: {e}")
                     return idx, None
 
             futures = [executor.submit(classify_with_index, idx, img) for idx, img in enumerate(images)]
