@@ -70,7 +70,7 @@ async def review_batch(
     Each component can be toggled via query parameters.
     """
     try:
-        service_results = _service.review_batch(
+        service_results = await _service.review_batch(
             request.images,
             include_quality=include_quality,
             include_aircraft=include_aircraft,

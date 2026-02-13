@@ -5,12 +5,14 @@ FastAPI application entry point for Aerovision-V1-Server.
 import contextlib
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api import api_router
 from app.core.config import get_settings
 from app.core.logging import logger, setup_logging
+from app.core.exceptions import AerovisionException
 from app.inference import InferenceFactory
 
 # Get settings
@@ -41,6 +43,49 @@ app.add_middleware(
 
 # Include API routes
 app.include_router(api_router)
+
+
+# Exception handlers
+@app.exception_handler(AerovisionException)
+async def aerovision_exception_handler(request: Request, exc: AerovisionException):
+    """统一处理 Aerovision 异常"""
+    logger.warning(f"Aerovision 异常: {exc.code} - {exc.message}")
+
+    status_code_map = {
+        "IMAGE_LOAD_ERROR": 400,
+        "VALIDATION_ERROR": 422,
+        "MODEL_NOT_LOADED": 503,
+        "INFERENCE_ERROR": 500,
+        "RATE_LIMIT_ERROR": 429,
+    }
+
+    status_code = status_code_map.get(exc.code, 500)
+
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "success": False,
+            "error": {
+                "code": exc.code,
+                "message": exc.message,
+            },
+            "detail": str(exc) if settings.debug else None,
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局异常处理"""
+    logger.exception(f"未处理的异常: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "error": "内部服务错误",
+            "detail": str(exc) if settings.debug else None,
+        },
+    )
 
 
 # Lifespan events

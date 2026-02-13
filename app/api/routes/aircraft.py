@@ -65,7 +65,7 @@ async def classify_aircraft_batch(
     Classifies up to 50 images in a single request.
     """
     try:
-        service_results = _service.classify_batch(request.images, top_k=top_k)
+        service_results = await _service.classify_batch(request.images, top_k=top_k)
 
         results = [BatchAircraftItem(**r) for r in service_results]
 

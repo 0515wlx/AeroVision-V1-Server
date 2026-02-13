@@ -2,7 +2,7 @@
 Aircraft type classification service.
 """
 
-from concurrent.futures import ThreadPoolExecutor
+import asyncio
 from typing import Any
 
 from PIL import Image
@@ -63,7 +63,7 @@ class AircraftService(BaseService):
         result, timing = self.measure_time(do_classify)
         return result, timing
 
-    def classify_batch(
+    async def classify_batch(
         self,
         image_inputs: list[str],
         top_k: int | None = None
@@ -78,15 +78,18 @@ class AircraftService(BaseService):
         Returns:
             List of results with index, success status, and data/error
         """
-        images = []
-        for image_input in image_inputs:
+        # Load images in parallel using asyncio
+        async def load_image_async(image_input: str):
             try:
-                image = self.load_image(image_input)
-                images.append(image)
+                loop = asyncio.get_event_loop()
+                image = await loop.run_in_executor(None, lambda: self.load_image(image_input))
+                return image
             except ImageLoadError:
-                images.append(None)
+                return None
 
-        aircraft_results = self._classify_batch(images, top_k)
+        images = await asyncio.gather(*[load_image_async(img) for img in image_inputs])
+
+        aircraft_results = await self._classify_batch(images, top_k)
 
         results = []
         for idx, result in enumerate(aircraft_results):
@@ -107,9 +110,9 @@ class AircraftService(BaseService):
 
         return results
 
-    def _classify_batch(self, images: list[Image.Image | None], top_k: int | None = None) -> list[AircraftResult]:
+    async def _classify_batch(self, images: list[Image.Image | None], top_k: int | None = None) -> list[AircraftResult]:
         """
-        Classify aircraft type of multiple pre-loaded images concurrently.
+        Classify aircraft type of multiple pre-loaded images using batch inference.
 
         Args:
             images: List of PIL Image objects (can contain None for failed loads)
@@ -118,23 +121,36 @@ class AircraftService(BaseService):
         Returns:
             List of AircraftResult objects
         """
+        # Filter out None images and keep track of original indices
+        valid_images = [(idx, img) for idx, img in enumerate(images) if img is not None]
+
+        if not valid_images:
+            return [None] * len(images)
+
+        # Extract valid images in original order
+        indices, batch_images = zip(*sorted(valid_images, key=lambda x: x[0]))
+
+        # Run batch prediction in thread pool to avoid blocking
+        def run_batch_prediction():
+            classifier = self._get_classifier()
+            batch_results = classifier.predict(list(batch_images), top_k=top_k)
+            return batch_results
+
+        # Execute in thread pool to not block the event loop
+        loop = asyncio.get_event_loop()
+        batch_results = await loop.run_in_executor(None, run_batch_prediction)
+
+        # Map results back to original indices
         results = [None] * len(images)
-
-        with ThreadPoolExecutor() as executor:
-            def classify_with_index(idx, image):
-                if image is None:
-                    return idx, None
+        for idx, result in zip(indices, batch_results):
+            if result is not None:
                 try:
-                    result, _ = self._classify_image(image, top_k)
-                    return idx, result
+                    wrapped_result = wrap_aircraft_result(result)
+                    results[idx] = wrapped_result
                 except Exception as e:
-                    logger.error(f"Failed to classify image at index {idx}: {e}")
-                    return idx, None
-
-            futures = [executor.submit(classify_with_index, idx, img) for idx, img in enumerate(images)]
-
-            for future in futures:
-                idx, result = future.result()
-                results[idx] = result
+                    from app.core.logging import get_logger
+                    logger = get_logger("aircraft_service")
+                    logger.error(f"Failed to wrap result at index {idx}: {e}")
+                    results[idx] = None
 
         return results

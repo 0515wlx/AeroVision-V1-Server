@@ -5,6 +5,7 @@ This module provides a singleton factory for lazy-loading inference models from
 the aerovision-v1-inference package.
 """
 
+import threading
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -50,6 +51,12 @@ class InferenceFactory:
     _registration_ocr: Optional[RegistrationOCR] = None
     _quality_assessor: Optional[QualityAssessor] = None
 
+    # Thread-safe locks for lazy initialization
+    _aircraft_classifier_lock = threading.Lock()
+    _airline_classifier_lock = threading.Lock()
+    _registration_ocr_lock = threading.Lock()
+    _quality_assessor_lock = threading.Lock()
+
     @classmethod
     def is_available(cls) -> bool:
         """Check if aerovision-v1-inference package is available."""
@@ -81,17 +88,20 @@ class InferenceFactory:
         if not INFERENCE_AVAILABLE:
             raise InferenceFactoryError("aerovision-v1-inference package not available")
 
+        # Double-checked locking for thread safety
         if cls._aircraft_classifier is None:
-            model_path = cls.get_model_dir() / "aircraft" / "best.pt"
-            if not model_path.exists():
-                model_path = cls.get_model_dir() / "best.pt"
+            with cls._aircraft_classifier_lock:
+                if cls._aircraft_classifier is None:
+                    model_path = cls.get_model_dir() / "aircraft" / "best.pt"
+                    if not model_path.exists():
+                        model_path = cls.get_model_dir() / "best.pt"
 
-            logger.info(f"Loading aircraft classifier from {model_path}")
-            cls._aircraft_classifier = AircraftClassifier(
-                model_path=str(model_path),
-                device=cls.get_device()
-            )
-            logger.info("Aircraft classifier loaded successfully")
+                    logger.info(f"Loading aircraft classifier from {model_path}")
+                    cls._aircraft_classifier = AircraftClassifier(
+                        model_path=str(model_path),
+                        device=cls.get_device()
+                    )
+                    logger.info("Aircraft classifier loaded successfully")
 
         return cls._aircraft_classifier
 
@@ -109,17 +119,20 @@ class InferenceFactory:
         if not INFERENCE_AVAILABLE:
             raise InferenceFactoryError("aerovision-v1-inference package not available")
 
+        # Double-checked locking for thread safety
         if cls._airline_classifier is None:
-            model_path = cls.get_model_dir() / "airline" / "best.pt"
-            if not model_path.exists():
-                model_path = cls.get_model_dir() / "best.pt"
+            with cls._airline_classifier_lock:
+                if cls._airline_classifier is None:
+                    model_path = cls.get_model_dir() / "airline" / "best.pt"
+                    if not model_path.exists():
+                        model_path = cls.get_model_dir() / "best.pt"
 
-            logger.info(f"Loading airline classifier from {model_path}")
-            cls._airline_classifier = AirlineClassifier(
-                model_path=str(model_path),
-                device=cls.get_device()
-            )
-            logger.info("Airline classifier loaded successfully")
+                    logger.info(f"Loading airline classifier from {model_path}")
+                    cls._airline_classifier = AirlineClassifier(
+                        model_path=str(model_path),
+                        device=cls.get_device()
+                    )
+                    logger.info("Airline classifier loaded successfully")
 
         return cls._airline_classifier
 
@@ -137,20 +150,23 @@ class InferenceFactory:
         if not INFERENCE_AVAILABLE:
             raise InferenceFactoryError("aerovision-v1-inference package not available")
 
+        # Double-checked locking for thread safety
         if cls._registration_ocr is None:
-            settings = get_settings()
-            ocr_mode = settings.ocr_mode
-            ocr_lang = settings.ocr_lang
-            use_angle_cls = settings.use_angle_cls
+            with cls._registration_ocr_lock:
+                if cls._registration_ocr is None:
+                    settings = get_settings()
+                    ocr_mode = settings.ocr_mode
+                    ocr_lang = settings.ocr_lang
+                    use_angle_cls = settings.use_angle_cls
 
-            logger.info(f"Loading registration OCR in {ocr_mode} mode")
-            cls._registration_ocr = RegistrationOCR(
-                mode=ocr_mode,
-                lang=ocr_lang,
-                use_angle_cls=use_angle_cls,
-                enabled=True
-            )
-            logger.info("Registration OCR loaded successfully")
+                    logger.info(f"Loading registration OCR in {ocr_mode} mode")
+                    cls._registration_ocr = RegistrationOCR(
+                        mode=ocr_mode,
+                        lang=ocr_lang,
+                        use_angle_cls=use_angle_cls,
+                        enabled=True
+                    )
+                    logger.info("Registration OCR loaded successfully")
 
         return cls._registration_ocr
 
@@ -168,25 +184,28 @@ class InferenceFactory:
         if not INFERENCE_AVAILABLE:
             raise InferenceFactoryError("aerovision-v1-inference package not available")
 
+        # Double-checked locking for thread safety
         if cls._quality_assessor is None:
-            settings = get_settings()
-            sharpness_weight = settings.sharpness_weight
-            exposure_weight = settings.exposure_weight
-            composition_weight = settings.composition_weight
-            noise_weight = settings.noise_weight
-            color_weight = settings.color_weight
-            pass_threshold = settings.quality_pass_threshold
+            with cls._quality_assessor_lock:
+                if cls._quality_assessor is None:
+                    settings = get_settings()
+                    sharpness_weight = settings.sharpness_weight
+                    exposure_weight = settings.exposure_weight
+                    composition_weight = settings.composition_weight
+                    noise_weight = settings.noise_weight
+                    color_weight = settings.color_weight
+                    pass_threshold = settings.quality_pass_threshold
 
-            logger.info("Loading quality assessor")
-            cls._quality_assessor = QualityAssessor(
-                sharpness_weight=sharpness_weight,
-                exposure_weight=exposure_weight,
-                composition_weight=composition_weight,
-                noise_weight=noise_weight,
-                color_weight=color_weight,
-                pass_threshold=pass_threshold
-            )
-            logger.info("Quality assessor loaded successfully")
+                    logger.info("Loading quality assessor")
+                    cls._quality_assessor = QualityAssessor(
+                        sharpness_weight=sharpness_weight,
+                        exposure_weight=exposure_weight,
+                        composition_weight=composition_weight,
+                        noise_weight=noise_weight,
+                        color_weight=color_weight,
+                        pass_threshold=pass_threshold
+                    )
+                    logger.info("Quality assessor loaded successfully")
 
         return cls._quality_assessor
 

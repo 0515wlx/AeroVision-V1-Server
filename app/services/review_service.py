@@ -2,6 +2,7 @@
 Aggregated review service.
 """
 
+import asyncio
 import time
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
@@ -137,7 +138,7 @@ class ReviewService(BaseService):
         timing = (self._now() - start_time) * 1000
         return result, timing
 
-    def review_batch(
+    async def review_batch(
         self,
         image_inputs: list[str],
         include_quality: bool = True,
@@ -158,67 +159,61 @@ class ReviewService(BaseService):
         Returns:
             List of results with index, success status, and data/error
         """
-        # Load all images once
-        images = []
-        image_errors = []
-
-        for image_input in image_inputs:
+        # Load all images in parallel
+        async def load_image_async(image_input: str):
             try:
-                image = self.load_image(image_input)
-                images.append(image)
-                image_errors.append(None)
+                loop = asyncio.get_event_loop()
+                image = await loop.run_in_executor(None, lambda: self.load_image(image_input))
+                return image, None
             except ImageLoadError as e:
-                images.append(None)
-                image_errors.append(str(e))
+                return None, str(e)
             except Exception as e:
-                images.append(None)
-                image_errors.append(str(e))
+                return None, str(e)
 
-        # Collect results from all services using concurrent inference
-        # Use ThreadPoolExecutor to parallelize batch processing across services
-        quality_results = None
-        aircraft_results = None
-        airline_results = None
-        registration_results = None
+        loaded_results = await asyncio.gather(*[load_image_async(img) for img in image_inputs])
+        images = [r[0] for r in loaded_results]
+        image_errors = [r[1] for r in loaded_results]
 
-        batch_tasks = {}
+        # Collect results from all services using async concurrent execution
+        tasks = []
 
+        # Create async tasks for all services
         if include_quality:
-            batch_tasks['quality'] = self.quality_service._assess_batch
+            # Quality service uses sync _assess_batch, wrap it in executor
+            async def run_quality():
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, self.quality_service._assess_batch, images)
+            tasks.append(('quality', run_quality()))
 
         if include_aircraft:
-            batch_tasks['aircraft'] = self.aircraft_service._classify_batch
+            tasks.append(('aircraft', self.aircraft_service._classify_batch(images)))
 
         if include_airline:
-            batch_tasks['airline'] = self.airline_service._classify_batch
+            tasks.append(('airline', self.airline_service._classify_batch(images)))
 
         if include_registration:
-            batch_tasks['registration'] = self.registration_service._recognize_batch
+            # Registration service uses sync _recognize_batch, wrap it in executor
+            async def run_registration():
+                loop = asyncio.get_event_loop()
+                return await loop.run_in_executor(None, self.registration_service._recognize_batch, images)
+            tasks.append(('registration', run_registration()))
 
-        # Execute batch tasks in parallel
-        if batch_tasks:
-            with ThreadPoolExecutor() as executor:
-                future_to_name = {
-                    executor.submit(task, images): name
-                    for name, task in batch_tasks.items()
-                }
+        # Execute tasks concurrently
+        results_map = {}
+        for task_name, coroutine in tasks:
+            try:
+                results_map[task_name] = await coroutine
+            except Exception as e:
+                from app.core.logging import get_logger
+                logger = get_logger("review_service")
+                logger.error(f"Failed to execute {task_name} task: {e}")
+                results_map[task_name] = None
 
-                for future in future_to_name:
-                    task_name = future_to_name[future]
-                    try:
-                        result = future.result()
-                        if task_name == 'quality':
-                            quality_results = result
-                        elif task_name == 'aircraft':
-                            aircraft_results = result
-                        elif task_name == 'airline':
-                            airline_results = result
-                        elif task_name == 'registration':
-                            registration_results = result
-                    except Exception as e:
-                        task_name = future_to_name[future]
-                        self.safe_execute(lambda: None)  # Log error through safe_execute
-                        setattr(locals(), f"{task_name}_results", None)
+        # Extract individual results
+        quality_results = results_map.get('quality')
+        aircraft_results = results_map.get('aircraft')
+        airline_results = results_map.get('airline')
+        registration_results = results_map.get('registration')
 
         # Build final results
         results = []

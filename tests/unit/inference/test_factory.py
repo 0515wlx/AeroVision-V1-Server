@@ -3,7 +3,9 @@ Unit tests for InferenceFactory.
 """
 
 import os
+import threading
 from unittest.mock import MagicMock, patch
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -100,3 +102,118 @@ class TestInferenceFactory:
         InferenceFactory.reset()
         # Should not raise, just log warning
         InferenceFactory.preload_models()
+
+    @pytest.mark.skipif(not INFERENCE_AVAILABLE, reason="Inference package not available")
+    def test_get_aircraft_classifier_thread_safety(self):
+        """Test thread safety of get_aircraft_classifier with concurrent access."""
+        InferenceFactory.reset()
+        results = []
+        errors = []
+
+        def get_classifier():
+            try:
+                result = InferenceFactory.get_aircraft_classifier()
+                results.append(result)
+            except Exception as e:
+                errors.append(e)
+
+        # Create multiple threads to access get_aircraft_classifier concurrently
+        num_threads = 10
+        threads = []
+        for _ in range(num_threads):
+            thread = threading.Thread(target=get_classifier)
+            threads.append(thread)
+            thread.start()
+
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+
+        # Verify no errors occurred
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+
+        # Verify all threads got the same instance (singleton)
+        assert len(results) == num_threads
+        first_result = results[0]
+        for result in results[1:]:
+            assert result is first_result, "All threads should receive the same instance"
+
+    @pytest.mark.skipif(not INFERENCE_AVAILABLE, reason="Inference package not available")
+    def test_get_airline_classifier_thread_safety(self):
+        """Test thread safety of get_airline_classifier with concurrent access."""
+        InferenceFactory.reset()
+        results = []
+        errors = []
+
+        def get_classifier():
+            try:
+                result = InferenceFactory.get_airline_classifier()
+                results.append(result)
+            except Exception as e:
+                errors.append(e)
+
+        # Create multiple threads to access get_airline_classifier concurrently
+        num_threads = 10
+        threads = []
+        for _ in range(num_threads):
+            thread = threading.Thread(target=get_classifier)
+            threads.append(thread)
+            thread.start()
+
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+
+        # Verify no errors occurred
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+
+        # Verify all threads got the same instance (singleton)
+        assert len(results) == num_threads
+        first_result = results[0]
+        for result in results[1:]:
+            assert result is first_result, "All threads should receive the same instance"
+
+    @pytest.mark.skipif(not INFERENCE_AVAILABLE, reason="Inference package not available")
+    def test_multiple_classifiers_concurrent_access(self):
+        """Test thread safety when accessing multiple classifiers concurrently."""
+        InferenceFactory.reset()
+        results = {'aircraft': [], 'airline': [], 'ocr': [], 'quality': []}
+        errors = []
+
+        def get_all_classifiers():
+            try:
+                aircraft = InferenceFactory.get_aircraft_classifier()
+                results['aircraft'].append(aircraft)
+
+                airline = InferenceFactory.get_airline_classifier()
+                results['airline'].append(airline)
+
+                ocr = InferenceFactory.get_registration_ocr()
+                results['ocr'].append(ocr)
+
+                quality = InferenceFactory.get_quality_assessor()
+                results['quality'].append(quality)
+            except Exception as e:
+                errors.append(e)
+
+        # Create multiple threads
+        num_threads = 10
+        threads = []
+        for _ in range(num_threads):
+            thread = threading.Thread(target=get_all_classifiers)
+            threads.append(thread)
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        # Verify no errors
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+
+        # Verify singleton pattern for each classifier
+        for classifier_type, classifier_results in results.items():
+            if classifier_results:  # Only check if results exist
+                assert len(classifier_results) == num_threads
+                first_result = classifier_results[0]
+                for result in classifier_results[1:]:
+                    assert result is first_result, f"{classifier_type} should return same instance"

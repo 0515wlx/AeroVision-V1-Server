@@ -366,21 +366,27 @@ class TestReviewServiceConcurrentBatchInference:
             'registration': [registration, registration, registration]
         }
 
-    def test_review_batch_uses_concurrent_inference(self, test_images_batch, sample_batch_results):
+    @pytest.mark.asyncio
+    async def test_review_batch_uses_concurrent_inference(self, test_images_batch, sample_batch_results):
         """
         Test that review_batch() uses true concurrent inference instead of sequential loops.
 
         This test verifies that batch methods are called instead of looping through
         individual review() calls.
         """
+        from unittest.mock import AsyncMock
+
         service = ReviewService()
 
-        # Mock internal batch methods
+        # Mock internal batch methods - aircraft and airline are now async
+        async_mock_aircraft = AsyncMock(return_value=sample_batch_results['aircraft'])
+        async_mock_airline = AsyncMock(return_value=sample_batch_results['airline'])
+
         with patch.object(service.quality_service, '_assess_batch', return_value=sample_batch_results['quality']):
-            with patch.object(service.aircraft_service, '_classify_batch', return_value=sample_batch_results['aircraft']):
-                with patch.object(service.airline_service, '_classify_batch', return_value=sample_batch_results['airline']):
+            with patch.object(service.aircraft_service, '_classify_batch', async_mock_aircraft):
+                with patch.object(service.airline_service, '_classify_batch', async_mock_airline):
                     with patch.object(service.registration_service, '_recognize_batch', return_value=sample_batch_results['registration']):
-                        results = service.review_batch(
+                        results = await service.review_batch(
                             test_images_batch,
                             include_quality=True,
                             include_aircraft=True,
@@ -403,7 +409,8 @@ class TestReviewServiceConcurrentBatchInference:
                         assert len(results) == 3
                         assert all(r['success'] for r in results)
 
-    def test_review_batch_passes_loaded_images_only_once(self, test_images_batch, sample_batch_results):
+    @pytest.mark.asyncio
+    async def test_review_batch_passes_loaded_images_only_once(self, test_images_batch, sample_batch_results):
         """
         Test that review_batch() loads images only once per image, not per service.
 
@@ -421,13 +428,18 @@ class TestReviewServiceConcurrentBatchInference:
             load_image_calls.append(image_input)
             return original_load_image(image_input)
 
+        from unittest.mock import AsyncMock
+
+        async_mock_aircraft = AsyncMock(return_value=sample_batch_results['aircraft'])
+        async_mock_airline = AsyncMock(return_value=sample_batch_results['airline'])
+
         with patch('app.services.base.BaseService.load_image', side_effect=tracked_load_image):
-            # Mock internal batch methods
+            # Mock internal batch methods - aircraft and airline are now async
             with patch.object(service.quality_service, '_assess_batch', return_value=sample_batch_results['quality']):
-                with patch.object(service.aircraft_service, '_classify_batch', return_value=sample_batch_results['aircraft']):
-                    with patch.object(service.airline_service, '_classify_batch', return_value=sample_batch_results['airline']):
+                with patch.object(service.aircraft_service, '_classify_batch', async_mock_aircraft):
+                    with patch.object(service.airline_service, '_classify_batch', async_mock_airline):
                         with patch.object(service.registration_service, '_recognize_batch', return_value=sample_batch_results['registration']):
-                            results = service.review_batch(
+                            results = await service.review_batch(
                                 test_images_batch,
                                 include_quality=True,
                                 include_aircraft=True,
@@ -438,7 +450,8 @@ class TestReviewServiceConcurrentBatchInference:
         # Verify each image was loaded exactly once
         assert len(load_image_calls) == 3, f"Expected 3 image loads, got {len(load_image_calls)}"
 
-    def test_review_batch_handles_partial_failures(self, test_images_batch, sample_batch_results):
+    @pytest.mark.asyncio
+    async def test_review_batch_handles_partial_failures(self, test_images_batch, sample_batch_results):
         """
         Test that review_batch() handles partial failures gracefully.
 
@@ -447,12 +460,17 @@ class TestReviewServiceConcurrentBatchInference:
         """
         service = ReviewService()
 
+        from unittest.mock import AsyncMock
+
         # Mock one service to return None (simulating safe_execute behavior)
+        async_mock_aircraft = AsyncMock(return_value=sample_batch_results['aircraft'])
+        async_mock_airline = AsyncMock(return_value=sample_batch_results['airline'])
+
         with patch.object(service.quality_service, '_assess_batch', return_value=None):
-            with patch.object(service.aircraft_service, '_classify_batch', return_value=sample_batch_results['aircraft']):
-                with patch.object(service.airline_service, '_classify_batch', return_value=sample_batch_results['airline']):
+            with patch.object(service.aircraft_service, '_classify_batch', async_mock_aircraft):
+                with patch.object(service.airline_service, '_classify_batch', async_mock_airline):
                     with patch.object(service.registration_service, '_recognize_batch', return_value=sample_batch_results['registration']):
-                        results = service.review_batch(
+                        results = await service.review_batch(
                             test_images_batch,
                             include_quality=True,
                             include_aircraft=True,
