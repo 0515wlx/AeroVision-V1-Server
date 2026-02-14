@@ -1,7 +1,7 @@
 """
 Inference layer for Aerovision-V1-Server.
 
-This module provides the interface to aerovision-v1-inference models.
+This module provides the interface to aerovision_inference models.
 """
 
 from app.inference.factory import (

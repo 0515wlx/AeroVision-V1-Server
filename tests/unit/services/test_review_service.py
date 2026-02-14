@@ -107,7 +107,7 @@ class TestReviewServiceBugFixes:
         service = ReviewService()
 
         # Mock quality_service to return None (simulating safe_execute failure)
-        with patch.object(service.quality_service, 'assess', return_value=None):
+        with patch.object(service.quality_service, '_assess_image', return_value=None):
             # This should not raise TypeError
             result, timing = service.review(test_image_base64, include_quality=True)
 

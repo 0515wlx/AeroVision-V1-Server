@@ -1,7 +1,7 @@
 """
 Wrapper functions for converting inference results to API schemas.
 
-This module provides conversion utilities between aerovision-v1-inference
+This module provides conversion utilities between aerovision_inference
 output formats and the API response schemas.
 """
 

@@ -1,8 +1,8 @@
 """
-Inference model factory for loading and managing aerovision-v1-inference components.
+Inference model factory for loading and managing aerovision_inference components.
 
 This module provides a singleton factory for lazy-loading inference models from
-the aerovision-v1-inference package.
+the aerovision_inference package.
 """
 
 import threading
@@ -13,10 +13,10 @@ from typing import Optional
 from app.core.config import get_settings
 from app.core.logging import logger
 
-# Try to import from aerovision-v1-inference
+# Try to import from aerovision_inference
 # Allow graceful degradation if not available
 try:
-    from infer import (
+    from aerovision_inference import (
         AircraftClassifier,
         AirlineClassifier,
         RegistrationOCR,
@@ -24,7 +24,7 @@ try:
     )
     INFERENCE_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"aerovision-v1-inference not available: {e}")
+    logger.warning(f"aerovision_inference not available: {e}")
     INFERENCE_AVAILABLE = False
     AircraftClassifier = None  # type: ignore
     AirlineClassifier = None  # type: ignore
@@ -40,7 +40,7 @@ class InferenceFactoryError(Exception):
 
 class InferenceFactory:
     """
-    Factory for managing inference models from aerovision-v1-inference.
+    Factory for managing inference models from aerovision_inference.
 
     Provides lazy-loading singleton instances of all inference components.
     Models are loaded on first access and cached for subsequent use.
@@ -59,7 +59,7 @@ class InferenceFactory:
 
     @classmethod
     def is_available(cls) -> bool:
-        """Check if aerovision-v1-inference package is available."""
+        """Check if aerovision_inference package is available."""
         return INFERENCE_AVAILABLE
 
     @classmethod
@@ -86,7 +86,7 @@ class InferenceFactory:
             InferenceFactoryError: If inference package is not available.
         """
         if not INFERENCE_AVAILABLE:
-            raise InferenceFactoryError("aerovision-v1-inference package not available")
+            raise InferenceFactoryError("aerovision_inference package not available")
 
         # Double-checked locking for thread safety
         if cls._aircraft_classifier is None:
@@ -117,7 +117,7 @@ class InferenceFactory:
             InferenceFactoryError: If inference package is not available.
         """
         if not INFERENCE_AVAILABLE:
-            raise InferenceFactoryError("aerovision-v1-inference package not available")
+            raise InferenceFactoryError("aerovision_inference package not available")
 
         # Double-checked locking for thread safety
         if cls._airline_classifier is None:
@@ -148,7 +148,7 @@ class InferenceFactory:
             InferenceFactoryError: If inference package is not available.
         """
         if not INFERENCE_AVAILABLE:
-            raise InferenceFactoryError("aerovision-v1-inference package not available")
+            raise InferenceFactoryError("aerovision_inference package not available")
 
         # Double-checked locking for thread safety
         if cls._registration_ocr is None:
@@ -182,7 +182,7 @@ class InferenceFactory:
             InferenceFactoryError: If inference package is not available.
         """
         if not INFERENCE_AVAILABLE:
-            raise InferenceFactoryError("aerovision-v1-inference package not available")
+            raise InferenceFactoryError("aerovision_inference package not available")
 
         # Double-checked locking for thread safety
         if cls._quality_assessor is None:
@@ -217,7 +217,7 @@ class InferenceFactory:
         Useful for warming up the service before handling requests.
         """
         if not INFERENCE_AVAILABLE:
-            logger.warning("Cannot preload models: aerovision-v1-inference not available")
+            logger.warning("Cannot preload models: aerovision_inference not available")
             return
 
         logger.info("Preloading inference models...")

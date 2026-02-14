@@ -422,7 +422,7 @@ Current coverage: **52%** (418/865 lines)
 
 ### Inference Layer
 
-The `app/inference/factory.py` provides a unified interface for loading models from `aerovision-v1-inference`:
+The `app/inference/factory.py` provides a unified interface for loading models from `aerovision_inference`:
 
 - `InferenceFactory.get_aircraft_classifier()`
 - `InferenceFactory.get_airline_classifier()`
@@ -485,11 +485,11 @@ Each atomic API has a corresponding service class:
 - `pytest-cov>=4.1.0` - Coverage reporting
 
 ### Inference
-- `aerovision-v1-inference` - Inference backend (local package)
+- `aerovision_inference` - Inference backend (local package)
 
 ## Compatibility
 
-This server is designed to work with `aerovision-v1-inference` package. The inference layer provides:
+This server is designed to work with `aerovision_inference` package. The inference layer provides:
 
 - Lazy-loading of models
 - Graceful degradation when inference package is not available
